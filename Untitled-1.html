@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>校園生態調查回報系統</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .card {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 480px;
+    }
+    h2 {
+      margin-top: 0;
+      color: #2d3748;
+      font-size: 1.3rem;
+      border-bottom: 2px solid #edf2f7;
+      padding-bottom: 10px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 6px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 0.95rem;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #3182ce;
+      box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.15);
+    }
+    .gps-status {
+      font-size: 0.8rem;
+      margin-top: 4px;
+      color: #718096;
+    }
+    button {
+      width: 100%;
+      background-color: #3182ce;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #2b6cb0;
+    }
+    button:disabled {
+      background-color: #a0aec0;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+      word-break: break-all;
+    }
+    .success {
+      background-color: #c6f6d5;
+      color: #22543d;
+      border: 1px solid #9ae6b4;
+    }
+    .error {
+      background-color: #fed7d7;
+      color: #742a2a;
+      border: 1px solid #feb2b2;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>生態調查資料填報</h2>
+    
+    <form id="reportForm">
+      <!-- Web App 網址欄位 -->
+      <div class="form-group">
+        <label for="webAppUrl">Apps Script Web App 網址 *</label>
+        <input type="url" id="webAppUrl" placeholder="https://script.google.com/macros/s/.../exec" required>
+      </div>
+
+      <!-- 自動抓取欄位 (GPS 狀態顯示) -->
+      <div class="form-group">
+        <label>當前 GPS 座標 (自動定位置入)</label>
+        <input type="text" id="gps" placeholder="正在取得定位..." readonly style="background-color: #edf2f7;">
+        <div id="gpsStatusText" class="gps-status">📍 正在啟動 GPS 定位中...</div>
+      </div>
+
+      <!-- 手動輸入欄位 -->
+      <div class="form-group">
+        <label for="location">校園地點 *</label>
+        <input type="text" id="location" placeholder="例如：工程館後方草皮" required>
+      </div>
+
+      <div class="form-group">
+        <label for="species">物種名稱 *</label>
+        <input type="text" id="species" placeholder="例如：喜鵲" required>
+      </div>
+
+      <div class="form-group">
+        <label for="amountUnit">數量與單位 *</label>
+        <input type="text" id="amountUnit" placeholder="例如：3隻" required>
+      </div>
+
+      <div class="form-group">
+        <label for="remark">備註</label>
+        <textarea id="remark" rows="3" placeholder="例如：正在尋找樹枝築巢"></textarea>
+      </div>
+
+      <button type="submit" id="submitBtn">提交送出 (Submit)</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    let currentGpsCoords = "";
+
+    // 1. 網頁載入時自動啟動 GPS 定位
+    window.addEventListener('DOMContentLoaded', () => {
+      initGeolocation();
+    });
+
+    function initGeolocation() {
+      const gpsInput = document.getElementById('gps');
+      const gpsStatusText = document.getElementById('gpsStatusText');
+
+      if (!navigator.geolocation) {
+        gpsStatusText.innerText = "❌ 您的瀏覽器不支援 GPS 定位功能";
+        gpsInput.placeholder = "不支援 GPS 定位";
+        return;
+      }
+
+      // 自動監控/取得位置
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          currentGpsCoords = `${lat}, ${lng}`;
+          gpsInput.value = currentGpsCoords;
+          gpsStatusText.innerText = "✅ GPS 定位成功！";
+          gpsStatusText.style.color = "#38a169";
+        },
+        (error) => {
+          let errorMsg = "無法取得定位";
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMsg = "❌ 定位權限被拒絕，請開啟手機瀏覽器定位權限";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMsg = "❌ 無法取得當前位置訊號";
+              break;
+            case error.TIMEOUT:
+              errorMsg = "⚠️ 定位逾時，請重設頁面再試";
+              break;
+          }
+          gpsStatusText.innerText = errorMsg;
+          gpsStatusText.style.color = "#e53e3e";
+          gpsInput.placeholder = "未取得定位";
+        },
+        {
+          enableHighAccuracy: true, // 啟用高精準度 GPS
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+
+    // 2. 點擊「提交送出」時，自動生成當前時間並發送資料
+    document.getElementById('reportForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const url = document.getElementById('webAppUrl').value.trim();
+      const statusDiv = document.getElementById('status');
+      const submitBtn = document.getElementById('submitBtn');
+
+      // 自動產生【提交瞬間】的日期時間格式 (YYYY-MM-DD HH:mm:ss)
+      const now = new Date();
+      const YYYY = now.getFullYear();
+      const MM = String(now.getMonth() + 1).padStart(2, '0');
+      const DD = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const currentDatetime = `${YYYY}-${MM}-${DD} ${hh}:${mm}:${ss}`;
+
+      // 組合欲發送的 JSON Payload (確定鍵名 key 與 Apps Script 一致)
+      const payload = {
+        datetime: currentDatetime,                         // 瞬間自動抓取的日期時間
+        gps: currentGpsCoords || document.getElementById('gps').value, // 定位座標
+        location: document.getElementById('location').value, // 地點
+        species: document.getElementById('species').value,   // 物種
+        amountUnit: document.getElementById('amountUnit').value, // 數量與單位
+        remark: document.getElementById('remark').value     // 備註
+      };
+
+      // UI 處理
+      submitBtn.disabled = true;
+      submitBtn.innerText = "資料送出中...";
+      statusDiv.style.display = "none";
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8" // 避免 CORS 預檢失敗
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success") {
+          statusDiv.className = "success";
+          statusDiv.innerText = `✅ 成功：資料已於 ${currentDatetime} 寫入試算表！`;
+          
+          // 送出後清空手動輸入欄位
+          document.getElementById('location').value = "";
+          document.getElementById('species').value = "";
+          document.getElementById('amountUnit').value = "";
+          document.getElementById('remark').value = "";
+        } else {
+          statusDiv.className = "error";
+          statusDiv.innerText = `❌ 錯誤：${result.message}`;
+        }
+      } catch (error) {
+        statusDiv.className = "error";
+        statusDiv.innerText = `⚠️ 送出失敗：${error.message}\n請檢查網址或網路狀態。`;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "提交送出 (Submit)";
+        statusDiv.style.display = "block";
+      }
+    });
+  </script>
+
+</body>
+</html>
